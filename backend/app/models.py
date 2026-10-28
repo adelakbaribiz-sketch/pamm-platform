@@ -171,7 +171,7 @@ class Outbox(Base):
 
 class AuditLog(Base):
     __tablename__ = "audit_log"
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     tenant_id: Mapped[str] = mapped_column(String, nullable=False)
     actor_id: Mapped[str | None] = mapped_column(String)
     action: Mapped[str] = mapped_column(String, nullable=False)

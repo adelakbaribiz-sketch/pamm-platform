@@ -1,4 +1,5 @@
 """Seed demo data."""
+import os
 from decimal import Decimal
 from .db import SessionLocal, engine, Base
 from .models import (Tenant, User, Broker, TradingServer, MasterAccount, Strategy,
@@ -6,6 +7,12 @@ from .models import (Tenant, User, Broker, TradingServer, MasterAccount, Strateg
 from .auth import hash_password
 
 def run():
+    _seed_base()
+    if os.environ.get("SEED_DEMO_HISTORY", "1") != "0":
+        from .demo_history import populate
+        populate()
+
+def _seed_base():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
