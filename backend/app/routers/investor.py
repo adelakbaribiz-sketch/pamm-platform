@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..auth import get_principal, Principal, require_roles
 from ..db import get_db
-from ..models import InvestorAccount, Subscription, MasterAccount, Strategy
+from ..models import InvestorAccount, Subscription, MasterAccount, Strategy, Broker, User
 from ..schemas import InvestorCreate, SubscribeIn
 from ..domain import pamm, risk
 from ..domain.events import record_event, append_audit
@@ -15,8 +15,16 @@ router = APIRouter()
 def create_investor(body: InvestorCreate,
                     p: Annotated[Principal, Depends(require_roles("broker_admin"))],
                     db: Session = Depends(get_db)):
+    broker = db.query(Broker).filter(Broker.id == body.broker_id, Broker.tenant_id == p.tenant_id).first()
+    if not broker: raise HTTPException(404, "Broker not found")
+    owner_id = p.user_id
+    if body.owner_user_id:
+        owner = db.query(User).filter(User.id == body.owner_user_id, User.tenant_id == p.tenant_id,
+                                      User.role == "investor").first()
+        if not owner: raise HTTPException(404, "Investor user not found in this tenant")
+        owner_id = owner.id
     inv = InvestorAccount(tenant_id=p.tenant_id, broker_id=body.broker_id,
-                          login=body.login, currency=body.currency, owner_user_id=p.user_id)
+                          login=body.login, currency=body.currency, owner_user_id=owner_id)
     db.add(inv); db.flush()
     record_event(db, p.tenant_id, "investor.created", {"investor_account_id": inv.id},
                  subject_type="investor_account", subject_id=inv.id)
@@ -29,6 +37,8 @@ def create_investor(body: InvestorCreate,
 def list_investors(p: Annotated[Principal, Depends(get_principal)], db: Session = Depends(get_db)):
     q = db.query(InvestorAccount)
     if not p.is_super_admin: q = q.filter(InvestorAccount.tenant_id == p.tenant_id)
+    # Investors only see the accounts they own.
+    if p.role == "investor": q = q.filter(InvestorAccount.owner_user_id == p.user_id)
     return [{"id": i.id, "broker_id": i.broker_id, "login": i.login,
              "currency": i.currency, "status": i.status} for i in q.all()]
 
@@ -47,6 +57,9 @@ def subscribe(body: SubscribeIn,
     inv = db.query(InvestorAccount).filter(InvestorAccount.id == body.investor_account_id,
                                            InvestorAccount.tenant_id == p.tenant_id).first()
     if not inv: raise HTTPException(404, "Investor account not found")
+    # Investors may only subscribe with an account they own.
+    if p.role == "investor" and inv.owner_user_id != p.user_id:
+        raise HTTPException(403, "Investor account does not belong to you")
     try:
         risk.check_subscription(db, p.tenant_id, m.id, body.capital)
     except risk.RiskError as e:

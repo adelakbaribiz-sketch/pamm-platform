@@ -41,6 +41,7 @@ class InvestorCreate(BaseModel):
     broker_id: str
     login: str
     currency: str = "USD"
+    owner_user_id: str | None = None
 
 class SubscribeIn(BaseModel):
     strategy_id: str

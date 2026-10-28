@@ -78,6 +78,9 @@ def execute_rollover(body: RolloverIn,
         m.hwm = pamm.q2(m.equity)
     m.nav_at_period_start = pamm.q2(nav_after_gross)
     investor_total = pamm.q2(sum((r.gav_end for r in results), Decimal("0")))
+    # Record the period P&L and post-fee equity (previously stored as 0 / unchanged).
+    rollover.master_pnl = pamm.q2(sum((r.pnl_share for r in results), Decimal("0")))
+    rollover.master_equity_after = pamm.q2(m.equity)
     reconciled = pamm.reconcile(m.equity, results, total_fee)
     # Merkle settlement
     leaves = []
@@ -119,7 +122,8 @@ def get_rollover(rollover_id: str, p: Annotated[Principal, Depends(get_principal
     if not r: raise HTTPException(404, "Rollover not found")
     if not p.is_super_admin and r.tenant_id != p.tenant_id:
         raise HTTPException(403, "Cross-tenant access denied")
-    return _serialize_rollover(r, db)
+    # Investors only see their own entries, not other investors' allocations.
+    return _serialize_rollover(r, db, only_user=p.user_id if p.role == "investor" else None)
 
 @router.get("/masters/{master_id}/rollovers")
 def list_rollovers(master_id: str, p: Annotated[Principal, Depends(get_principal)],
@@ -132,10 +136,12 @@ def list_rollovers(master_id: str, p: Annotated[Principal, Depends(get_principal
              "total_performance_fee": str(r.total_performance_fee),
              "status": r.status, "idempotency_key": r.idempotency_key} for r in q.all()]
 
-def _serialize_rollover(r: Rollover, db: Session) -> RolloverOut:
+def _serialize_rollover(r: Rollover, db: Session, only_user: str | None = None) -> RolloverOut:
     entries = []
     for e in r.entries:
         s = db.query(Subscription).filter(Subscription.id == e.subscription_id).first()
+        if only_user and (not s or s.investor_user_id != only_user):
+            continue
         inv = db.query(InvestorAccount).filter(InvestorAccount.id == s.investor_account_id).first() if s else None
         entries.append(RolloverEntryOut(
             subscription_id=e.subscription_id, investor_login=inv.login if inv else None,

@@ -12,10 +12,21 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, text
 from ..db import get_db
 from ..models import (MasterAccount, Strategy, Subscription, Rollover, RolloverEntry,
-                       InvestorAccount, User, Broker)
+                       InvestorAccount, User, Broker, Tenant)
 from ..domain import pamm
+from ..config import settings
 
 router = APIRouter()
+
+
+def _public_tenant_id(db: Session) -> str | None:
+    """Public pages show a single tenant's showcase (settings.default_tenant).
+
+    Without this scope the unauthenticated endpoints aggregated every tenant's
+    accounts, leaking one broker's book to another broker's public page.
+    """
+    t = db.query(Tenant).filter(Tenant.slug == settings.default_tenant).first()
+    return t.id if t else "__none__"
 
 
 @router.get("/top-accounts")
@@ -28,7 +39,8 @@ def top_performing_accounts(
 
     No authentication required — public performance data only.
     """
-    q = db.query(MasterAccount).filter(MasterAccount.status == "active")
+    tid = _public_tenant_id(db)
+    q = db.query(MasterAccount).filter(MasterAccount.status == "active", MasterAccount.tenant_id == tid)
     accounts = q.all()
 
     results = []
@@ -42,7 +54,7 @@ def top_performing_accounts(
         # Get rollover history for P&L chart
         rollovers = db.query(Rollover).filter(
             Rollover.master_account_id == m.id,
-        ).order_by(Rollover.created_at.desc()).limit(30).all()
+        ).order_by(Rollover.period_end.desc()).limit(120).all()
 
         pnl_history = []
         cumulative_pnl = Decimal("0")
@@ -54,6 +66,7 @@ def top_performing_accounts(
                 "pnl": float(r.master_pnl) if r.master_pnl else 0,
                 "cumulative_pnl": float(cumulative_pnl),
                 "total_fee": float(r.total_performance_fee),
+                "equity": float(r.master_equity_after) if r.master_equity_after is not None else None,
             })
 
         # Count active subscribers
@@ -89,6 +102,8 @@ def top_performing_accounts(
             "performance_fee_rate": str(m.performance_fee_rate),
             "allocation_method": m.allocation_method,
             "manager_name": manager.email.split("@")[0] if manager else "unknown",
+            "manager_id": manager.id if manager else None,
+            "strategy_id": strat.id if strat else None,
             "strategy_name": strat.name if strat else None,
             "strategy_kind": strat.kind if strat else "pamm",
             "pnl_history": pnl_history,
@@ -112,7 +127,9 @@ def list_managers(
 ):
     """Returns a directory of money managers with their aggregate portfolio stats."""
     # Find all users with role=money_manager
-    managers = db.query(User).filter(User.role == "money_manager", User.status == "active").all()
+    tid = _public_tenant_id(db)
+    managers = db.query(User).filter(User.role == "money_manager", User.status == "active",
+                                     User.tenant_id == tid).all()
 
     results = []
     for mgr in managers:
@@ -181,7 +198,8 @@ def list_public_strategies(
 ):
     """Returns investable strategies with performance stats — powers the
     'Invest' section on the public homepage."""
-    q = db.query(Strategy).filter(Strategy.status == "active")
+    tid = _public_tenant_id(db)
+    q = db.query(Strategy).filter(Strategy.status == "active", Strategy.tenant_id == tid)
     if kind:
         q = q.filter(Strategy.kind == kind)
     strategies = q.all()
@@ -224,14 +242,15 @@ def list_public_strategies(
 @router.get("/stats")
 def platform_stats(db: Session = Depends(get_db)):
     """Returns platform-wide aggregate stats for the homepage hero section."""
-    total_masters = db.query(MasterAccount).filter(MasterAccount.status == "active").count()
-    total_strategies = db.query(Strategy).filter(Strategy.status == "active").count()
-    total_investors = db.query(Subscription).filter(Subscription.status == "active").count()
-    total_aum = db.query(func.sum(MasterAccount.equity)).filter(MasterAccount.status == "active").scalar() or Decimal("0")
+    tid = _public_tenant_id(db)
+    total_masters = db.query(MasterAccount).filter(MasterAccount.status == "active", MasterAccount.tenant_id == tid).count()
+    total_strategies = db.query(Strategy).filter(Strategy.status == "active", Strategy.tenant_id == tid).count()
+    total_investors = db.query(Subscription).filter(Subscription.status == "active", Subscription.tenant_id == tid).count()
+    total_aum = db.query(func.sum(MasterAccount.equity)).filter(MasterAccount.status == "active", MasterAccount.tenant_id == tid).scalar() or Decimal("0")
 
     # Count rollovers in last 30 days
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-    recent_rollovers = db.query(Rollover).filter(Rollover.created_at >= thirty_days_ago).count()
+    recent_rollovers = db.query(Rollover).filter(Rollover.created_at >= thirty_days_ago, Rollover.tenant_id == tid).count()
 
     return {
         "total_masters": total_masters,
