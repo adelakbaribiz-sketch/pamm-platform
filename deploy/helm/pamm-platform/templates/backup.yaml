@@ -1,0 +1,71 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "pamm.fullname" . }}-backup
+  labels:
+    {{- include "pamm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 7
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          containers:
+            - name: backup
+              image: postgres:16-alpine
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.postgres.existingSecret | default (include "pamm.fullname" .) }}
+                      key: postgres-password
+                - name: PGUSER
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.postgres.existingSecret | default (include "pamm.fullname" .) }}
+                      key: postgres-user
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  set -e
+                  TS=$(date -u +%Y%m%d-%H%M%S)
+                  FILENAME="/backups/pamm-${TS}.sql.gz"
+                  echo "Starting backup to ${FILENAME}"
+                  pg_dump -h {{ .Values.postgres.host }} -p {{ .Values.postgres.port }} -U ${PGUSER} -d {{ .Values.postgres.database }} --no-owner --no-privileges | gzip > ${FILENAME}
+                  echo "Backup completed: ${FILENAME}"
+                  # Cleanup old backups
+                  find /backups -name "pamm-*.sql.gz" -mtime +{{ .Values.backup.retentionDays }} -delete
+                  echo "Old backups cleaned (retention: {{ .Values.backup.retentionDays }} days)"
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backups
+              resources:
+                requests: { cpu: 100m, memory: 256Mi }
+                limits: { cpu: 500m, memory: 1Gi }
+          volumes:
+            - name: backup-data
+              persistentVolumeClaim:
+                claimName: {{ include "pamm.fullname" . }}-backup
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pamm.fullname" . }}-backup
+  labels:
+    {{- include "pamm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: {{ .Values.backup.storageClassName }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage }}
+{{- end }}

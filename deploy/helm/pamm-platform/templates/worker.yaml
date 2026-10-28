@@ -1,0 +1,94 @@
+{{- /*
+Outbox Worker Deployment — drains pending outbox rows to Redis Streams
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pamm.fullname" . }}-worker
+  labels:
+    {{- include "pamm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.replicaCount.worker }}
+  selector:
+    matchLabels:
+      {{- include "pamm.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "pamm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: worker
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://$(PGUSER):$(PGPASSWORD)@{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}?sslmode={{ .Values.postgres.sslmode }}"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | default (include "pamm.fullname" .) }}
+                  key: postgres-user
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | default (include "pamm.fullname" .) }}
+                  key: postgres-password
+          command: ["python", "-m", "app.domain.outbox_worker"]
+          resources:
+            {{- toYaml .Values.resources.worker | nindent 12 }}
+---
+{{- /*
+Outbox Consumer Deployment — reads events from Redis Streams and processes them
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pamm.fullname" . }}-consumer
+  labels:
+    {{- include "pamm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: consumer
+spec:
+  replicas: {{ .Values.replicaCount.consumer }}
+  selector:
+    matchLabels:
+      {{- include "pamm.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: consumer
+  template:
+    metadata:
+      labels:
+        {{- include "pamm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: consumer
+    spec:
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      containers:
+        - name: consumer
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://$(PGUSER):$(PGPASSWORD)@{{ .Values.postgres.host }}:{{ .Values.postgres.port }}/{{ .Values.postgres.database }}?sslmode={{ .Values.postgres.sslmode }}"
+            - name: REDIS_URL
+              value: "redis://{{ .Values.redis.host }}:{{ .Values.redis.port }}/0"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | default (include "pamm.fullname" .) }}
+                  key: postgres-user
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.existingSecret | default (include "pamm.fullname" .) }}
+                  key: postgres-password
+          command: ["python", "-m", "app.domain.outbox_consumer"]
+          args: ["broker.created", "master.created", "subscription.created", "rollover.completed"]
+          resources:
+            {{- toYaml .Values.resources.consumer | nindent 12 }}

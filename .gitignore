@@ -1,0 +1,32 @@
+# Secrets / local config
+.env
+**/.env
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Local databases and backups
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+backups/
+*.sql.gz
+
+# Node / build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

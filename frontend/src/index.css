@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@layer components {
+  .card { @apply bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm; }
+  .btn { @apply px-3 py-2 rounded-md text-sm font-medium transition disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-700; }
+  .btn-ghost { @apply btn bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200; }
+  .input { @apply w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-slate-100; }
+  .label { @apply block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1; }
+  .stat { @apply card p-4; }
+  .tag { @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium; }
+  .tag-ok { @apply tag bg-green-100 text-green-700; }
+  .tag-warn { @apply tag bg-amber-100 text-amber-700; }
+  .tag-danger { @apply tag bg-red-100 text-red-700; }
+  .tag-mock { @apply tag bg-purple-100 text-purple-700; }
+}

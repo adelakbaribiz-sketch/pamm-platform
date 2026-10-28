@@ -1,0 +1,17 @@
+# PAMM Platform — raw Kubernetes manifests (alternative to Helm chart)
+# Usage:
+#   kubectl apply -f deploy/k8s/namespace.yaml
+#   # Create secrets (replace values):
+#   kubectl create secret generic pamm-secrets \
+#     --from-literal=postgres-user=pamm \
+#     --from-literal=postgres-password=CHANGE_ME \
+#     --from-literal=jwt-secret=CHANGE_ME_LONG_RANDOM_STRING \
+#     -n pamm-platform
+#   kubectl apply -f deploy/k8s/
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pamm-platform
+  labels:
+    name: pamm-platform

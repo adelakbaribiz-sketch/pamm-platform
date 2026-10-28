@@ -1,0 +1,109 @@
+# Default values for pamm-platform.
+# This is a YAML-formatted file.
+
+replicaCount:
+  backend: 2
+  worker: 1
+  consumer: 1
+
+image:
+  backend:
+    repository: pamm-platform/backend
+    tag: "0.5.0"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: pamm-platform/frontend
+    tag: "0.5.0"
+    pullPolicy: IfNotPresent
+
+# External services — must be provisioned separately in production
+postgres:
+  host: ""  # set to your managed Postgres endpoint
+  port: 5432
+  database: pamm
+  existingSecret: ""  # name of a k8s Secret with POSTGRES_USER + POSTGRES_PASSWORD
+  sslmode: require
+
+redis:
+  host: ""  # set to your managed Redis endpoint
+  port: 6379
+
+# JWT secret — MUST be set via a k8s Secret in production
+jwt:
+  existingSecret: ""  # name of a k8s Secret with JWT_SECRET key
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: pamm.example.com
+      paths:
+        - path: /
+          service: frontend
+          port: 80
+        - path: /api
+          service: backend
+          port: 8000
+  tls:
+    - secretName: pamm-tls
+      hosts: [pamm.example.com]
+
+resources:
+  backend:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: 1000m, memory: 1Gi }
+  worker:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+  consumer:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+# HorizontalPodAutoscaler
+hpa:
+  enabled: true
+  backend:
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 70
+
+# Pod disruption budget
+pdb:
+  enabled: true
+  minAvailable: 1
+
+# Persistence for backups
+backup:
+  enabled: true
+  storage: 50Gi
+  storageClassName: standard
+  schedule: "0 2 * * *"  # daily at 02:00 UTC
+  retentionDays: 30
+
+# Monitoring
+monitoring:
+  enabled: true
+  prometheusScrape: true
+  prometheusPort: 8000
+  prometheusPath: /metrics
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  readOnlyRootFilesystem: false  # needs /tmp for uvicorn workers
+
+# Probes
+probes:
+  liveness:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  readiness:
+    path: /ready
+    initialDelaySeconds: 5
+    periodSeconds: 5

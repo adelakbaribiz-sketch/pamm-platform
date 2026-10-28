@@ -1,0 +1,15 @@
+apiVersion: v2
+name: pamm-platform
+description: Multi-tenant PAMM/MAM/Copy Trading Platform
+type: application
+version: 0.5.0
+appVersion: "0.5.0"
+maintainers:
+  - name: PAMM Platform Team
+keywords:
+  - pamm
+  - mam
+  - copy-trading
+  - fastapi
+  - react
+  - postgresql
