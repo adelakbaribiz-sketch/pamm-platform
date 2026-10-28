@@ -30,3 +30,6 @@ dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local tool config
+.claude/

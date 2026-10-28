@@ -3,16 +3,32 @@ import os, sys, gzip, shutil, tempfile
 from pathlib import Path
 
 # Add the deploy/backup dir to path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "deploy" / "backup"))
+BACKUP_DIR = Path(__file__).resolve().parents[2] / "deploy" / "backup"
+sys.path.insert(0, str(BACKUP_DIR))
+
+# Postgres location is configurable; defaults match the original dev sandbox (unix socket dir).
+PG_HOST = os.environ.get("BACKUP_TEST_PG_HOST", "/home/z/my-project/pgdata")
+PG_PORT = os.environ.get("BACKUP_TEST_PG_PORT", "5432")
+
+
+def _url(db: str) -> str:
+    if PG_HOST.startswith("/"):  # unix socket directory
+        return f"postgresql+psycopg://pamm:pamm_dev_pw@/{db}?host={PG_HOST}"
+    return f"postgresql+psycopg://pamm:pamm_dev_pw@{PG_HOST}:{PG_PORT}/{db}"
+
+
+def _connect(db: str):
+    import psycopg
+    return psycopg.connect(host=PG_HOST, port=PG_PORT, user="pamm", password="pamm_dev_pw", dbname=db)
 
 
 def test_backup_creates_valid_sql_dump():
     """The backup.py script produces a non-empty gzipped SQL file with expected header."""
     import subprocess
     backup_dir = tempfile.mkdtemp()
-    env = {**os.environ, "DATABASE_URL": "postgresql+psycopg://pamm:pamm_dev_pw@/pamm?host=/home/z/my-project/pgdata"}
+    env = {**os.environ, "DATABASE_URL": _url("pamm")}
     result = subprocess.run(
-        [sys.executable, "/home/z/my-project/pamm-platform/deploy/backup/backup.py", backup_dir],
+        [sys.executable, str(BACKUP_DIR / "backup.py"), backup_dir],
         env=env, capture_output=True, text=True, timeout=60,
     )
     assert result.returncode == 0, f"backup.py failed: {result.stderr}"
@@ -35,9 +51,9 @@ def test_backup_restore_roundtrip():
     # Backup source
     backup_dir = tempfile.mkdtemp()
     env = {**os.environ, "DATABASE_URL":
-            "postgresql+psycopg://pamm:pamm_dev_pw@/pamm?host=/home/z/my-project/pgdata"}
+            _url("pamm")}
     r = subprocess.run(
-        [sys.executable, "/home/z/my-project/pamm-platform/deploy/backup/backup.py", backup_dir],
+        [sys.executable, str(BACKUP_DIR / "backup.py"), backup_dir],
         env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     backups = list(Path(backup_dir).glob("pamm-*.sql.gz"))
@@ -45,8 +61,7 @@ def test_backup_restore_roundtrip():
 
     # Truncate restore target
     import psycopg
-    with psycopg.connect(host="/home/z/my-project/pgdata", user="pamm",
-                          password="pamm_dev_pw", dbname="pamm_restore_test") as c:
+    with _connect("pamm_restore_test") as c:
         c.autocommit = True
         with c.cursor() as cur:
             cur.execute("SET session_replication_role = replica;")
@@ -65,9 +80,9 @@ def test_backup_restore_roundtrip():
 
     # Restore
     env_restore = {**os.environ, "DATABASE_URL":
-            "postgresql+psycopg://pamm:pamm_dev_pw@/pamm_restore_test?host=/home/z/my-project/pgdata"}
+            _url("pamm_restore_test")}
     r = subprocess.run(
-        [sys.executable, "/home/z/my-project/pamm-platform/deploy/backup/restore.py",
+        [sys.executable, str(BACKUP_DIR / "restore.py"),
          str(backups[0]), "--confirm"],
         env=env_restore, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
@@ -75,8 +90,7 @@ def test_backup_restore_roundtrip():
 
     # Verify counts match
     def count(dbname, table):
-        with psycopg.connect(host="/home/z/my-project/pgdata", user="pamm",
-                              password="pamm_dev_pw", dbname=dbname) as c:
+        with _connect(dbname) as c:
             with c.cursor() as cur:
                 cur.execute(f"SELECT count(*) FROM {table}")
                 return cur.fetchone()[0]
