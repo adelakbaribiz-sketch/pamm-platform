@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 const STATUS_COLORS: Record<string, string> = {
   completed: 'tag-ok',
@@ -40,7 +41,7 @@ export default function Sagas() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Settlement Sagas (P-3)</h1>
+      <PageHeader eyebrow="Infrastructure" title="Settlement sagas" subtitle="Multi-step settlement workflows with compensating actions and crash recovery." />
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         <div className="stat"><div className="text-xs text-slate-500 mb-1">Total Sagas</div><div className="text-2xl font-bold">{stats.total}</div></div>

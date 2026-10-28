@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 const SAMPLE_INVESTORS: Record<string, any> = {
   equity_ratio: [
@@ -109,7 +110,7 @@ export default function Mam() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">MAM Split (Master-Order Allocation)</h1>
+      <PageHeader eyebrow="Allocation" title="MAM split" subtitle="Split a master order into sub-account lots by equity, balance or fixed ratio with deterministic rounding." />
 
       <div className="card p-4 mb-6">
         <h2 className="font-semibold mb-3">Configuration</h2>

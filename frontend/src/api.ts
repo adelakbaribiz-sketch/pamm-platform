@@ -11,7 +11,8 @@ async function req<T>(method: string, path: string, body?: any): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body ? JSON.stringify(body) : undefined,
   })
-  if (res.status === 401) {
+  // A failed login is a normal 401: surface it instead of bouncing to /login.
+  if (res.status === 401 && path !== "/auth/login") {
     localStorage.removeItem('access_token')
     window.location.href = '/login'
     throw new Error('Unauthorized')

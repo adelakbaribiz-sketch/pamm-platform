@@ -1,6 +1,7 @@
 import React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 export default function Outbox() {
   const qc = useQueryClient()
@@ -10,7 +11,7 @@ export default function Outbox() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Outbox</h1>
+      <PageHeader eyebrow="Infrastructure" title="Event outbox" subtitle="Transactional outbox for domain events — pending, delivered and dead-letter counts." />
       <div className="card p-4 mb-6">
         <div className="grid grid-cols-3 gap-4 mb-4">
           <div className="stat"><div className="text-xs text-slate-500 mb-1">Pending</div><div className="text-2xl font-bold text-amber-600">{stats?.pending ?? 0}</div></div>

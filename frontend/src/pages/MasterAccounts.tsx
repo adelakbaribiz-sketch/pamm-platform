@@ -1,131 +1,159 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { usd, nav as fmtNav, rate, errorMessage, METHOD_LABEL } from '../format'
+import { Card, DemoNote, EmptyState, ErrorNote, Field, KindBadge, Modal, PageHeader, TableWrap, useToast } from '../components/ui'
+import { Icon } from '../components/icons'
+
+const METHODS = ['euro_days', 'start_capital', 'end_capital']
 
 export default function MasterAccounts() {
   const qc = useQueryClient()
+  const toast = useToast()
   const { data: brokers } = useQuery({ queryKey: ['brokers'], queryFn: api.listBrokers })
-  const { data: masters } = useQuery({ queryKey: ['masters'], queryFn: api.listMasters })
+  const { data: masters, isLoading } = useQuery({ queryKey: ['masters'], queryFn: api.listMasters })
   const { data: strategies } = useQuery({ queryKey: ['strategies'], queryFn: api.listStrategies })
   const [showMaster, setShowMaster] = useState(false)
   const [showStrat, setShowStrat] = useState(false)
-  const [pnlModal, setPnlModal] = useState<string | null>(null)
-  const [mForm, setMForm] = useState({ broker_id: '', login: '', currency: 'USD',
-    base_nav: '100', performance_fee_rate: '0.2', allocation_method: 'euro_days' })
+  const [pnlModal, setPnlModal] = useState<any | null>(null)
+  const [mForm, setMForm] = useState({ broker_id: '', login: '', currency: 'USD', base_nav: '100', performance_fee_rate: '0.2', allocation_method: 'euro_days' })
   const [sForm, setSForm] = useState({ master_account_id: '', name: '', description: '', kind: 'pamm' })
   const [pnl, setPnl] = useState('')
+  const [submitted, setSubmitted] = useState(false)
 
-  const createM = useMutation({ mutationFn: () => api.createMaster(mForm), onSuccess: () => { qc.invalidateQueries({ queryKey: ['masters'] }); setShowMaster(false) } })
-  const createS = useMutation({ mutationFn: () => api.createStrategy(sForm), onSuccess: () => { qc.invalidateQueries({ queryKey: ['strategies'] }); setShowStrat(false) } })
-  const simPnl = useMutation({ mutationFn: () => api.simulatePnl(pnlModal!, pnl), onSuccess: () => { qc.invalidateQueries({ queryKey: ['masters'] }); setPnlModal(null); setPnl('') } })
+  const refresh = () => ['masters', 'strategies', 'strats', 'top-accounts', 'platform-stats'].forEach(k => qc.invalidateQueries({ queryKey: [k] }))
+  const createM = useMutation({ mutationFn: () => api.createMaster(mForm), onSuccess: (r: any) => { refresh(); setShowMaster(false); toast(`Master account ${r.login} created`) } })
+  const createS = useMutation({ mutationFn: () => api.createStrategy(sForm), onSuccess: () => { refresh(); setShowStrat(false); toast(`Strategy “${sForm.name}” created`) } })
+  const simPnl = useMutation({
+    mutationFn: () => api.simulatePnl(pnlModal.id, pnl),
+    onSuccess: (r: any) => { refresh(); setPnlModal(null); setPnl(''); toast(`Simulated P&L applied — equity now ${usd(r.equity)}`, 'info') },
+  })
+
+  const fee = Number(mForm.performance_fee_rate)
+  const mErrors = {
+    broker_id: !mForm.broker_id && 'Select a broker',
+    login: !mForm.login.trim() ? 'Login is required' : (masters || []).some(m => m.login === mForm.login.trim()) && 'Login already exists',
+    currency: !/^[A-Z]{3}$/.test(mForm.currency) && 'Use a 3-letter ISO code',
+    base_nav: !(Number(mForm.base_nav) > 0) && 'Must be greater than 0',
+    performance_fee_rate: !(fee >= 0 && fee < 1) && 'Enter a fraction between 0 and 0.99 (e.g. 0.2 = 20%)',
+  }
+  const sErrors = { master_account_id: !sForm.master_account_id && 'Select a master account', name: !sForm.name.trim() && 'Name is required' }
+  const pnlError = pnl === '' || !Number.isFinite(Number(pnl)) || Number(pnl) === 0 ? 'Enter a non-zero amount, e.g. 500 or -200' : ''
+  const hasErr = (e: Record<string, any>) => Object.values(e).some(Boolean)
+  const show = (e: string | false) => submitted && e
+
+  const openMaster = () => { setSubmitted(false); setMForm({ ...mForm, login: '', broker_id: brokers?.[0]?.id || '' }); setShowMaster(true) }
+  const openStrat = () => { setSubmitted(false); setSForm({ master_account_id: masters?.[0]?.id || '', name: '', description: '', kind: 'pamm' }); setShowStrat(true) }
+  const stratByMaster = new Map((strategies || []).map(s => [s.master_account_id, s]))
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Master Accounts & Strategies</h1>
-        <div className="flex gap-2">
-          <button className="btn-ghost" onClick={() => { setMForm({...mForm, broker_id: brokers?.[0]?.id || ''}); setShowMaster(true) }}>New Master</button>
-          <button className="btn-primary" onClick={() => { setSForm({...sForm, master_account_id: masters?.[0]?.id || ''}); setShowStrat(true) }}>New Strategy</button>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card p-4">
-          <h2 className="font-semibold mb-3">Master Accounts</h2>
-          <table className="w-full text-sm">
-            <thead className="text-left text-slate-500"><tr><th className="py-2">Login</th><th>Method</th><th>Equity</th><th>NAV</th><th></th></tr></thead>
-            <tbody>
-              {(masters || []).map(m => (
-                <tr key={m.id} className="border-t border-slate-100 dark:border-slate-800">
-                  <td className="py-2 font-mono">{m.login}</td>
-                  <td>{m.allocation_method}</td>
-                  <td>${Number(m.equity).toFixed(2)}</td>
-                  <td>${Number(m.nav).toFixed(4)}</td>
-                  <td><button className="btn-ghost text-xs" onClick={() => setPnlModal(m.id)}>Simulate P&L</button></td>
-                </tr>
+    <div className="space-y-6">
+      <PageHeader eyebrow="Workspaces" title="Master accounts & strategies"
+        subtitle="Master trading accounts hold pooled capital; each strategy exposes a master to investors as PAMM, MAM or copy."
+        actions={<>
+          <button className="btn-ghost" onClick={openMaster}><Icon name="plus" /> New master</button>
+          <button className="btn-primary" onClick={openStrat} disabled={!masters?.length}><Icon name="plus" /> New strategy</button>
+        </>} />
+
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+        <Card className="xl:col-span-3" title="Master accounts" bodyClass="px-4 sm:px-5 pb-4 pt-2">
+          {!isLoading && !masters?.length ? <EmptyState icon="layers" title="No master accounts" action={<button className="btn-primary" onClick={openMaster}>Create the first master</button>} /> : (
+            <TableWrap>
+              <table>
+                <thead><tr><th>Login</th><th>Allocation</th><th className="text-right">Equity</th><th className="text-right">NAV</th><th className="text-right">Fee</th><th /></tr></thead>
+                <tbody>
+                  {(masters || []).map(m => (
+                    <tr key={m.id}>
+                      <td><Link to={`/strategy/${m.id}`} className="font-mono text-xs hover:text-brand-500">{m.login}</Link><div className="text-xs text-muted">{stratByMaster.get(m.id)?.name || 'No strategy'}</div></td>
+                      <td><span className="tag-neutral">{METHOD_LABEL[m.allocation_method] || m.allocation_method}</span></td>
+                      <td className="text-right num">{usd(m.equity)}</td>
+                      <td className="text-right num">{fmtNav(m.nav)}</td>
+                      <td className="text-right num">{rate(m.performance_fee_rate)}</td>
+                      <td className="text-right"><button className="btn-ghost h-8 text-xs" onClick={() => { setPnl(''); setSubmitted(false); setPnlModal(m) }}>Simulate P&L</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </TableWrap>
+          )}
+        </Card>
+        <Card className="xl:col-span-2" title="Strategies">
+          {!strategies?.length ? <EmptyState title="No strategies" /> : (
+            <ul className="space-y-2">
+              {strategies.map(s => (
+                <li key={s.id} className="rounded-lg border border-line p-3 hover:bg-raised transition-colors">
+                  <div className="flex items-center gap-2 font-medium text-sm">{s.name} <KindBadge kind={s.kind} /><span className={`ml-auto ${s.status === 'active' ? 'tag-ok' : 'tag-neutral'}`}>{s.status}</span></div>
+                  {s.description && <div className="text-xs text-muted mt-1">{s.description}</div>}
+                </li>
               ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="card p-4">
-          <h2 className="font-semibold mb-3">Strategies</h2>
-          <ul className="space-y-2">
-            {(strategies || []).map(s => (
-              <li key={s.id} className="border border-slate-200 dark:border-slate-700 rounded p-3">
-                <div className="font-medium">{s.name} <span className={`tag ml-2 ${s.kind === 'pamm' ? 'tag-ok' : s.kind === 'mam' ? 'tag-warn' : 'tag-mock'}`}>{s.kind}</span></div>
-                <div className="text-xs text-slate-500">{s.description}</div>
-              </li>
-            ))}
-          </ul>
-        </div>
+            </ul>
+          )}
+        </Card>
       </div>
+
       {showMaster && (
-        <Modal title="New Master Account" onClose={() => setShowMaster(false)}>
-          <div className="space-y-3">
-            <div><label className="label">Broker</label>
-              <select className="input" value={mForm.broker_id} onChange={e => setMForm({...mForm, broker_id: e.target.value})}>
-                <option value="">— select —</option>
+        <Modal title="New master account" subtitle="Created on the broker's simulated trading server" onClose={() => setShowMaster(false)}>
+          <form className="space-y-3" noValidate onSubmit={e => { e.preventDefault(); setSubmitted(true); if (!hasErr(mErrors)) createM.mutate() }}>
+            <Field label="Broker" error={show(mErrors.broker_id)}>
+              <select className="input" value={mForm.broker_id} onChange={e => setMForm({ ...mForm, broker_id: e.target.value })}>
+                <option value="">Select broker…</option>
                 {(brokers || []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-            </div>
-            <div><label className="label">Login</label><input className="input" value={mForm.login} onChange={e => setMForm({...mForm, login: e.target.value})} /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className="label">Currency</label><input className="input" value={mForm.currency} onChange={e => setMForm({...mForm, currency: e.target.value})} /></div>
-              <div><label className="label">Base NAV</label><input className="input" value={mForm.base_nav} onChange={e => setMForm({...mForm, base_nav: e.target.value})} /></div>
-              <div><label className="label">Perf Fee Rate</label><input className="input" value={mForm.performance_fee_rate} onChange={e => setMForm({...mForm, performance_fee_rate: e.target.value})} /></div>
-              <div><label className="label">Method</label>
-                <select className="input" value={mForm.allocation_method} onChange={e => setMForm({...mForm, allocation_method: e.target.value})}>
-                  <option value="euro_days">euro_days</option>
-                  <option value="start_capital">start_capital</option>
-                  <option value="end_capital">end_capital</option>
+            </Field>
+            <Field label="Login" error={show(mErrors.login)}><input className={`input font-mono ${show(mErrors.login) ? 'input-error' : ''}`} placeholder="e.g. PAMM-004" value={mForm.login} onChange={e => setMForm({ ...mForm, login: e.target.value })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Currency" error={show(mErrors.currency)}><input className="input" value={mForm.currency} onChange={e => setMForm({ ...mForm, currency: e.target.value.toUpperCase() })} maxLength={3} /></Field>
+              <Field label="Base NAV" error={show(mErrors.base_nav)}><input className="input num" inputMode="decimal" value={mForm.base_nav} onChange={e => setMForm({ ...mForm, base_nav: e.target.value })} /></Field>
+              <Field label="Performance fee (fraction)" error={show(mErrors.performance_fee_rate)} hint={fee >= 0 && fee < 1 ? `${(fee * 100).toFixed(1)}% of gains above HWM` : undefined}>
+                <input className="input num" inputMode="decimal" value={mForm.performance_fee_rate} onChange={e => setMForm({ ...mForm, performance_fee_rate: e.target.value })} />
+              </Field>
+              <Field label="Allocation method">
+                <select className="input" value={mForm.allocation_method} onChange={e => setMForm({ ...mForm, allocation_method: e.target.value })}>
+                  {METHODS.map(m => <option key={m} value={m}>{METHOD_LABEL[m]}</option>)}
                 </select>
-              </div>
+              </Field>
             </div>
-            <button className="btn-primary w-full" onClick={() => createM.mutate()} disabled={createM.isPending}>Create</button>
-          </div>
+            {createM.isError && <ErrorNote error={errorMessage(createM.error)} />}
+            <button className="btn-primary w-full h-10" disabled={createM.isPending}>{createM.isPending ? 'Creating…' : 'Create master account'}</button>
+          </form>
         </Modal>
       )}
+
       {showStrat && (
-        <Modal title="New Strategy" onClose={() => setShowStrat(false)}>
-          <div className="space-y-3">
-            <div><label className="label">Master Account</label>
-              <select className="input" value={sForm.master_account_id} onChange={e => setSForm({...sForm, master_account_id: e.target.value})}>
-                <option value="">— select —</option>
+        <Modal title="New strategy" onClose={() => setShowStrat(false)}>
+          <form className="space-y-3" noValidate onSubmit={e => { e.preventDefault(); setSubmitted(true); if (!hasErr(sErrors)) createS.mutate() }}>
+            <Field label="Master account" error={show(sErrors.master_account_id)}>
+              <select className="input" value={sForm.master_account_id} onChange={e => setSForm({ ...sForm, master_account_id: e.target.value })}>
+                <option value="">Select master…</option>
                 {(masters || []).map(m => <option key={m.id} value={m.id}>{m.login}</option>)}
               </select>
-            </div>
-            <div><label className="label">Kind</label>
-              <select className="input" value={sForm.kind} onChange={e => setSForm({...sForm, kind: e.target.value})}>
-                <option value="pamm">pamm</option>
-                <option value="mam">mam</option>
-                <option value="copy">copy</option>
+            </Field>
+            <Field label="Product type">
+              <select className="input" value={sForm.kind} onChange={e => setSForm({ ...sForm, kind: e.target.value })}>
+                <option value="pamm">PAMM — pooled, unit-based</option>
+                <option value="mam">MAM — lot allocation across sub-accounts</option>
+                <option value="copy">Copy — follower trade mirroring</option>
               </select>
-            </div>
-            <div><label className="label">Name</label><input className="input" value={sForm.name} onChange={e => setSForm({...sForm, name: e.target.value})} /></div>
-            <div><label className="label">Description</label><textarea className="input" rows={3} value={sForm.description} onChange={e => setSForm({...sForm, description: e.target.value})} /></div>
-            <button className="btn-primary w-full" onClick={() => createS.mutate()} disabled={createS.isPending}>Create</button>
-          </div>
+            </Field>
+            <Field label="Name" error={show(sErrors.name)}><input className={`input ${show(sErrors.name) ? 'input-error' : ''}`} value={sForm.name} onChange={e => setSForm({ ...sForm, name: e.target.value })} /></Field>
+            <Field label="Description"><textarea className="input" rows={3} value={sForm.description} onChange={e => setSForm({ ...sForm, description: e.target.value })} /></Field>
+            {createS.isError && <ErrorNote error={errorMessage(createS.error)} />}
+            <button className="btn-primary w-full h-10" disabled={createS.isPending}>{createS.isPending ? 'Creating…' : 'Create strategy'}</button>
+          </form>
         </Modal>
       )}
-      {pnlModal && (
-        <Modal title={`Simulate P&L`} onClose={() => setPnlModal(null)}>
-          <div className="space-y-3">
-            <div className="tag-mock">Simulated broker — no real orders placed.</div>
-            <div><label className="label">P&L amount</label><input className="input" value={pnl} onChange={e => setPnl(e.target.value)} placeholder="e.g. 500 or -200" /></div>
-            <button className="btn-primary w-full" onClick={() => simPnl.mutate()} disabled={simPnl.isPending}>Apply</button>
-          </div>
-        </Modal>
-      )}
-    </div>
-  )
-}
 
-function Modal({ title, children, onClose }: any) {
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="card p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4"><h3 className="font-semibold">{title}</h3><button onClick={onClose} className="text-slate-400">✕</button></div>
-        {children}
-      </div>
+      {pnlModal && (
+        <Modal title="Simulate P&L" subtitle={`${pnlModal.login} · equity ${usd(pnlModal.equity)}`} onClose={() => setPnlModal(null)}>
+          <form className="space-y-3" noValidate onSubmit={e => { e.preventDefault(); setSubmitted(true); if (!pnlError) simPnl.mutate() }}>
+            <DemoNote>Simulated broker — no real orders are placed. Risk rules (max exposure, max drawdown) are still enforced.</DemoNote>
+            <Field label="P&L amount (USD)" error={show(pnlError)}><input className="input num" inputMode="decimal" value={pnl} onChange={e => setPnl(e.target.value)} placeholder="e.g. 500 or -200" autoFocus /></Field>
+            {simPnl.isError && <ErrorNote error={`Rejected by risk engine: ${errorMessage(simPnl.error)}`} />}
+            <button className="btn-primary w-full h-10" disabled={simPnl.isPending}>{simPnl.isPending ? 'Applying…' : 'Apply simulated P&L'}</button>
+          </form>
+        </Modal>
+      )}
     </div>
   )
 }

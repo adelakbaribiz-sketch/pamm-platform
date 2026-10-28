@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 export default function Allocation() {
   const qc = useQueryClient()
@@ -30,7 +31,7 @@ export default function Allocation() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">P-1: Risk-Constrained Adaptive Allocation</h1>
+      <PageHeader eyebrow="Allocation" title="Risk-constrained allocation" subtitle="Linear-programming allocator that respects per-investor risk limits; breaches raise alerts for review." />
       <div className="card p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div><label className="label">Master Account</label>

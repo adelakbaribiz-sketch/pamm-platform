@@ -1,123 +1,84 @@
-import React, { useState } from 'react'
+import React, { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { Link } from 'react-router-dom'
 import { api } from '../api'
+import { useAccountPerformance } from '../hooks'
+import { usd, pct, nav as fmtNav, prettyName, initials, tone } from '../format'
+import { Card, EmptyState, KindBadge, PageHeader, Skeleton, Sparkline, StatCard, DemoNote } from '../components/ui'
+import { Icon } from '../components/icons'
 
 export default function Managers() {
-  const { data: managers, isLoading } = useQuery({
-    queryKey: ['public-managers'], queryFn: () => api.publicManagers(20),
-  })
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const { data: managers, isLoading, error } = useQuery({ queryKey: ['public-managers'], queryFn: () => api.publicManagers(20) })
+  const { data: perf } = useAccountPerformance()
+  const perfByLogin = useMemo(() => new Map((perf || []).map(p => [p.login, p])), [perf])
 
-  // Aggregate AUM by manager for the bar chart
-  const chartData = (managers || []).map((m: any) => ({
-    name: m.manager_name,
-    aum: Number(m.total_aum),
-    subscribers: m.total_subscribers,
-    return: Number(m.avg_return_pct),
-  }))
+  const totals = useMemo(() => ({
+    aum: (managers || []).reduce((s: number, m: any) => s + Number(m.total_aum), 0),
+    investors: (managers || []).reduce((s: number, m: any) => s + m.total_subscribers, 0),
+    strategies: (managers || []).reduce((s: number, m: any) => s + m.strategies.length, 0),
+  }), [managers])
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold mb-2">پرتفولیو مدیران سرمایه</h1>
-        <p className="text-sm text-slate-500">فهرست مدیران حرفه‌ای با آمار عملکرد تجمعی</p>
+      <PageHeader eyebrow="Directory" title="Money managers"
+        subtitle="Managers running pooled strategies on this broker, with aggregate assets and per-strategy track records." />
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <StatCard label="Managers" icon="users" value={managers ? managers.length : <Skeleton className="h-7 w-10" />} />
+        <StatCard label="Assets managed" icon="wallet" value={managers ? usd(totals.aum, { decimals: 0 }) : <Skeleton className="h-7 w-28" />} />
+        <StatCard label="Strategies · allocations" icon="layers" value={managers ? `${totals.strategies} · ${totals.investors}` : <Skeleton className="h-7 w-16" />} />
       </div>
 
-      {/* Aggregate AUM Chart */}
-      {chartData.length > 0 && (
-        <div className="card p-6">
-          <h2 className="text-lg font-semibold mb-4">دارایی تحت مدیریت بر اساس مدیر</h2>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={chartData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis type="number" stroke="#9ca3af" style={{ fontSize: 12 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-              <YAxis type="category" dataKey="name" stroke="#9ca3af" style={{ fontSize: 12 }} width={80} />
-              <Tooltip
-                contentStyle={{ backgroundColor: '#1e293b', border: '1px solid #374151', borderRadius: '8px' }}
-                labelStyle={{ color: '#e2e8f0' }}
-                formatter={(v: any, name: any) => name === "aum" ? [`$${Number(v).toLocaleString()}`, "دارایی"] : [v, name]}
-              />
-              <Bar dataKey="aum" name="دارایی ($)" fill="#2563eb" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      {/* Manager Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {(managers || []).map((mgr: any) => (
-          <div key={mgr.manager_id} className="card p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-brand-500 flex items-center justify-center text-white font-bold text-lg">
-                  {mgr.manager_name.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="font-bold text-lg">{mgr.manager_name}</div>
-                  <div className="text-xs text-slate-500">
-                    {mgr.master_account_count} اکانت · {mgr.total_subscribers} سرمایه‌گذار
-                  </div>
-                </div>
-              </div>
-              <div className={`px-3 py-1 rounded-lg text-sm font-bold ${
-                Number(mgr.avg_return_pct) >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-              }`}>
-                {Number(mgr.avg_return_pct) >= 0 ? '▲' : '▼'} {Math.abs(Number(mgr.avg_return_pct))}%
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 mb-4 text-sm">
-              <div className="bg-slate-50 dark:bg-slate-900/40 rounded p-3">
-                <div className="text-xs text-slate-500 mb-1">AUM کل</div>
-                <div className="font-bold">${Number(mgr.total_aum).toLocaleString()}</div>
-              </div>
-              <div className="bg-slate-50 dark:bg-slate-900/40 rounded p-3">
-                <div className="text-xs text-slate-500 mb-1">بازدهی متوسط</div>
-                <div className={`font-bold ${Number(mgr.avg_return_pct) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {mgr.avg_return_pct}%
-                </div>
-              </div>
-              <div className="bg-slate-50 dark:bg-slate-900/40 rounded p-3">
-                <div className="text-xs text-slate-500 mb-1">استراتژی‌ها</div>
-                <div className="font-bold">{mgr.strategies.length}</div>
-              </div>
-            </div>
-
-            {/* Strategy list */}
-            <div className="space-y-2">
-              {mgr.strategies.map((s: any) => (
-                <div key={s.strategy_id} className="border border-slate-200 dark:border-slate-700 rounded p-3 flex items-center justify-between">
-                  <div>
-                    <div className="font-medium text-sm">{s.name}</div>
-                    <div className="text-xs text-slate-500">
-                      {s.master_login} · {s.kind.toUpperCase()} · {s.subscriber_count} سرمایه‌گذار
+      {error ? <div className="card"><EmptyState icon="alert" title="Could not load managers" hint={(error as Error).message} /></div>
+        : isLoading ? <div className="grid lg:grid-cols-2 gap-4">{[0, 1].map(i => <Skeleton key={i} className="h-72" />)}</div>
+        : !managers?.length ? <div className="card"><EmptyState icon="users" title="No managers yet" hint="Managers appear once they run at least one active master account." /></div>
+        : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {managers.map((m: any) => {
+              const share = totals.aum ? Number(m.total_aum) / totals.aum * 100 : 0
+              return (
+                <Card key={m.manager_id}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <span className="w-11 h-11 rounded-xl bg-brand-500/15 text-brand-600 dark:text-brand-400 grid place-items-center font-semibold">{initials(m.manager_name)}</span>
+                      <div>
+                        <div className="font-semibold">{prettyName(m.manager_name)}</div>
+                        <div className="text-xs text-muted">{m.master_account_count} master accounts · {m.total_subscribers} investor allocations</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-lg font-semibold num ${tone(m.avg_return_pct)}`}>{pct(m.avg_return_pct)}</div>
+                      <div className="text-[11px] text-subtle">avg. return per master</div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className={`text-sm font-bold ${Number(s.return_pct) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {s.return_pct}%
-                    </div>
-                    <div className="text-xs text-slate-500">${Number(s.equity).toLocaleString()}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
 
-            <a href="/#invest" className="btn-primary w-full mt-4 block text-center">
-              مشاهده فرصت‌های سرمایه‌گذاری
-            </a>
+                  <div className="mt-4">
+                    <div className="flex justify-between text-xs mb-1.5"><span className="text-muted">AUM {usd(m.total_aum, { decimals: 0 })}</span><span className="text-subtle">{share.toFixed(1)}% of platform</span></div>
+                    <div className="h-1.5 rounded-full bg-raised overflow-hidden"><div className="h-full bg-brand-500 rounded-full" style={{ width: `${share}%` }} /></div>
+                  </div>
+
+                  <div className="mt-4 divide-y divide-line/70 border border-line rounded-lg">
+                    {m.strategies.map((s: any) => {
+                      const p = perfByLogin.get(s.master_login)
+                      return (
+                        <Link key={s.strategy_id} to={p ? `/strategy/${p.master_account_id}` : '/'} className="flex items-center gap-3 px-3 py-2.5 hover:bg-raised transition-colors">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium flex items-center gap-2 truncate">{s.name} <KindBadge kind={s.kind} /></div>
+                            <div className="text-xs text-muted">NAV {fmtNav(s.nav)} · {s.subscriber_count} investors · {usd(s.equity, { decimals: 0 })}</div>
+                          </div>
+                          <div className="w-24 hidden sm:block">{p && <Sparkline data={p.history} id={`m-${s.strategy_id}`} height={30} />}</div>
+                          <div className={`w-16 text-right text-sm font-medium num ${tone(s.return_pct)}`}>{pct(s.return_pct)}</div>
+                          <Icon name="chevronRight" className="w-4 h-4 text-subtle" />
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </Card>
+              )
+            })}
           </div>
-        ))}
-        {isLoading && (
-          <div className="card p-8 text-center text-slate-500 col-span-2">در حال بارگذاری...</div>
         )}
-        {!isLoading && managers && managers.length === 0 && (
-          <div className="card p-8 text-center text-slate-500 col-span-2">
-            هنوز مدیر فعالی ثبت نشده است.
-          </div>
-        )}
-      </div>
+      <DemoNote>Manager names are derived from seeded demo accounts; performance comes from the simulated broker adapter.</DemoNote>
     </div>
   )
 }

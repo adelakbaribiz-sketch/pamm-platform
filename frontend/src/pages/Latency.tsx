@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 export default function Latency() {
   const qc = useQueryClient()
@@ -36,7 +37,7 @@ export default function Latency() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">P-2: Shadow Latency & Slippage Prediction</h1>
+      <PageHeader eyebrow="Infrastructure" title="Latency & slippage model" subtitle="Shadow model that predicts execution latency and slippage per destination, calibrated against observed fills." />
       <div className="card p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
           <div><label className="label">Destination</label><input className="input" value={destination} onChange={e => setDestination(e.target.value)} /></div>

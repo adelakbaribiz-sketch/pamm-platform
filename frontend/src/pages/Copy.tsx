@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 function Modal({ title, children, onClose }: any) {
   return (
@@ -98,14 +99,9 @@ export default function Copy() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Copy Trading Console</h1>
-          <p className="text-sm text-slate-500">
-            {totalActive} active · {totalPaused} paused · {totalDetached} detached
-          </p>
-        </div>
-        <div className="flex gap-2">
+      <PageHeader eyebrow="Allocation" title="Copy trading"
+        subtitle={<>{totalActive} active · {totalPaused} paused · {totalDetached} detached followers. Master trades are mirrored to followers with a per-follower risk multiplier.</>}
+        actions={<div className="flex flex-wrap gap-2">
           <button className="btn-ghost" onClick={() => setShowSub(true)}>New Follower Subscription</button>
           <button className="btn-primary" onClick={() => {
             const cs = (subs || [])[0]
@@ -113,8 +109,7 @@ export default function Copy() {
                           master_account_id: cs?.master_account_id || '' })
             setShowTrade(true)
           }}>Open Copy Trade</button>
-        </div>
-      </div>
+        </div>} />
 
       {actionError && (
         <div className="card p-3 mb-4 bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700">

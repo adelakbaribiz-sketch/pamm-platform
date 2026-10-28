@@ -5,19 +5,23 @@ export interface Session {
   role: string
   tenant_id: string | null
   user_id: string
+  email?: string
 }
 
 const Ctx = createContext<{ session: Session | null; setSession: (s: Session | null) => void; logout: () => void }>({
   session: null, setSession: () => {}, logout: () => {},
 })
 
+const SESSION_KEYS = ['access_token', 'role', 'tenant_id', 'user_id', 'email']
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSessionState] = useState<Session | null>(() => {
     const t = localStorage.getItem('access_token')
+    const em = localStorage.getItem('email') || undefined
     const r = localStorage.getItem('role')
     const tid = localStorage.getItem('tenant_id')
     const uid = localStorage.getItem('user_id')
-    if (t && r && uid) return { access_token: t, role: r, tenant_id: tid ? JSON.parse(tid) : null, user_id: uid }
+    if (t && r && uid) return { access_token: t, role: r, tenant_id: tid ? JSON.parse(tid) : null, user_id: uid, email: em }
     return null
   })
   const setSession = (s: Session | null) => {
@@ -26,7 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem('role', s.role)
       localStorage.setItem('tenant_id', JSON.stringify(s.tenant_id))
       localStorage.setItem('user_id', s.user_id)
-    } else { localStorage.clear() }
+      if (s.email) localStorage.setItem('email', s.email)
+    } else {
+      // Clear only session keys so viewer preferences (theme) survive sign-out.
+      for (const k of SESSION_KEYS) localStorage.removeItem(k)
+    }
     setSessionState(s)
   }
   const logout = () => setSession(null)

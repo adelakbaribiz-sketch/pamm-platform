@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader } from '../components/ui'
 
 const ADAPTER_TYPE_COLORS: Record<string, string> = {
   simulated: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
@@ -27,7 +28,7 @@ export default function Adapters() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Broker Adapters</h1>
+      <PageHeader eyebrow="Infrastructure" title="Broker adapters" subtitle="Connectivity to MT5, cTrader and crypto venues. Live adapters require SDKs and credentials; this demo runs the simulated adapter only." />
       <div className="card p-4 mb-6">
         <h2 className="font-semibold mb-3">Registered Adapters</h2>
         <p className="text-xs text-slate-500 mb-3">

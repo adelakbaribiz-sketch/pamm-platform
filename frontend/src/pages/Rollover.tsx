@@ -1,37 +1,44 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
+import { PageHeader, useToast } from '../components/ui'
+import { usd, nav as fmtNav, num, fullDate, METHOD_LABEL } from '../format'
 
 export default function Rollover() {
   const qc = useQueryClient()
   const { data: masters } = useQuery({ queryKey: ['masters'], queryFn: api.listMasters })
   const [masterId, setMasterId] = useState('')
   const [method, setMethod] = useState('euro_days')
-  const [periodDays, setPeriodDays] = useState('1')
+  const [periodDays, setPeriodDays] = useState('7')
+  const toast = useToast()
+  useEffect(() => { if (!masterId && masters?.length) setMasterId(masters[0].id) }, [masters, masterId])
   const [result, setResult] = useState<any>(null)
   const [err, setErr] = useState('')
   const execute = useMutation({
     mutationFn: () => api.executeRollover({ master_account_id: masterId, method, idempotency_key: crypto.randomUUID(), period_days: Number(periodDays) }),
-    onSuccess: (r) => { setResult(r); setErr(''); qc.invalidateQueries({ queryKey: ['masters'] }); qc.invalidateQueries({ queryKey: ['subs'] }) },
+    onSuccess: (r) => {
+      setResult(r); setErr('')
+      ;['masters', 'subs', 'rollovers', 'top-accounts', 'platform-stats'].forEach(k => qc.invalidateQueries({ queryKey: [k] }))
+      toast(`Rollover completed — fees ${usd(r.total_performance_fee)}, NAV ${fmtNav(r.nav_after)}`)
+    },
     onError: (e: any) => setErr(e.message),
   })
-  const { data: rollovers } = useQuery({ queryKey: ['rollovers', masterId], queryFn: () => api.listRollovers(masterId), enabled: !!masterId })
+  const { data: rollovers } = useQuery({ queryKey: ['rollovers', masterId], queryFn: () => api.listRollovers(masterId), enabled: !!masterId,
+    select: (rs: any[]) => [...rs].sort((a, b) => b.period_end.localeCompare(a.period_end)) })
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-6">Rollover Processing</h1>
+      <PageHeader eyebrow="Allocation" title="Rollovers" subtitle="Close a period for a master account: allocate P&L, charge HWM performance fees, re-issue units and publish a Merkle settlement root." />
       <div className="card p-4 mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div><label className="label">Master Account</label>
             <select className="input" value={masterId} onChange={e => setMasterId(e.target.value)}>
-              <option value="">—</option>
+              
               {(masters || []).map(m => <option key={m.id} value={m.id}>{m.login}</option>)}
             </select>
           </div>
           <div><label className="label">Method</label>
             <select className="input" value={method} onChange={e => setMethod(e.target.value)}>
-              <option value="euro_days">euro_days</option>
-              <option value="start_capital">start_capital</option>
-              <option value="end_capital">end_capital</option>
+              {Object.entries(METHOD_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </div>
           <div><label className="label">Period Days</label><input className="input" value={periodDays} onChange={e => setPeriodDays(e.target.value)} /></div>
@@ -56,8 +63,8 @@ export default function Rollover() {
                 <tr key={e.subscription_id} className="border-t border-slate-100 dark:border-slate-800">
                   <td className="py-2 font-mono">{e.investor_login}</td>
                   <td>{Number(e.units).toFixed(4)}</td>
-                  <td>${Number(e.pnl_share).toFixed(2)}</td>
-                  <td>${Number(e.performance_fee).toFixed(2)}</td>
+                  <td>{usd(e.pnl_share, { signed: true })}</td>
+                  <td>{usd(e.performance_fee)}</td>
                   <td>{Number(e.units_after).toFixed(4)}</td>
                 </tr>
               ))}
@@ -68,15 +75,15 @@ export default function Rollover() {
       <div className="card p-4">
         <h2 className="font-semibold mb-3">Rollover History</h2>
         <table className="w-full text-sm">
-          <thead className="text-left text-slate-500"><tr><th className="py-2">ID</th><th>Method</th><th>NAV After</th><th>Total Fee</th><th>Period End</th></tr></thead>
+          <thead className="text-left text-slate-500"><tr><th className="py-2">ID</th><th>Method</th><th className="text-right">NAV After</th><th className="text-right">Total Fee</th><th>Period End</th></tr></thead>
           <tbody>
-            {(rollovers || []).map(r => (
+            {(rollovers || []).slice(0, 30).map(r => (
               <tr key={r.id} className="border-t border-slate-100 dark:border-slate-800">
                 <td className="py-2 font-mono text-xs">{r.id.slice(0, 8)}</td>
-                <td>{r.method}</td>
-                <td>${Number(r.nav_after).toFixed(4)}</td>
-                <td>${Number(r.total_performance_fee).toFixed(2)}</td>
-                <td className="text-xs">{new Date(r.period_end).toLocaleString()}</td>
+                <td><span className="tag-neutral">{METHOD_LABEL[r.method] || r.method}</span></td>
+                <td className="text-right num">{fmtNav(r.nav_after)}</td>
+                <td className="text-right num">{usd(r.total_performance_fee)}</td>
+                <td>{fullDate(r.period_end)}</td>
               </tr>
             ))}
           </tbody>
