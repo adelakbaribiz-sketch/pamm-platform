@@ -15,7 +15,7 @@ investors and compliance.
 |---|---|
 | ![Leaderboard](docs/screenshots/02-strategy-leaderboard.jpg) | ![Strategy detail](docs/screenshots/03-strategy-detail.jpg) |
 | ![Broker dashboard](docs/screenshots/04-broker-dashboard.jpg) | ![Investor portfolio](docs/screenshots/05-investor-portfolio.jpg) |
-| ![Managers](docs/screenshots/06-managers.jpg) | ![Settlement proof (light theme)](docs/screenshots/07-settlement-proof-light.jpg) |
+| ![Managers](docs/screenshots/06-managers.jpg) | ![Settlement proof — verified Merkle inclusion proof for one investor statement](docs/screenshots/07-settlement-proof.jpg) |
 | ![Sign in](docs/screenshots/08-login.jpg) | ![Mobile](docs/screenshots/09-mobile.jpg) |
 
 *Screenshots are captures of the running application with the seeded demo data.*
