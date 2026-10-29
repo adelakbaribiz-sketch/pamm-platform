@@ -40,7 +40,7 @@ export default function Login() {
   const emailInvalid = email.length > 0 && !/^\S+@\S+\.\S+$/.test(email)
 
   return (
-    <div className="min-h-screen grid lg:grid-cols-[1.1fr_1fr] bg-bg">
+    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[1.1fr_1fr] bg-bg">
       <div className="hidden lg:flex flex-col justify-between p-10 border-r border-line bg-surface relative overflow-hidden">
         <Brand />
         <div className="max-w-lg relative">
@@ -83,7 +83,7 @@ export default function Login() {
               <span className="text-[11px] font-semibold uppercase tracking-wider text-subtle">Demo workspaces</span>
               <span className="flex-1 h-px bg-line" />
             </div>
-            <div className="grid gap-2">
+            <div className="grid grid-cols-1 gap-2">
               {DEMO_ACCOUNTS.map(a => (
                 <button key={a.email} type="button" disabled={busy} onClick={() => { setEmail(a.email); setPassword(DEMO_PASSWORD); signIn(a.email, DEMO_PASSWORD) }}
                   className="card text-left px-4 py-3 hover:border-brand-500/50 transition-colors flex items-center gap-3 group">
